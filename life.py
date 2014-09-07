@@ -1,5 +1,6 @@
 from operator import methodcaller
 from os import path, listdir
+from textwrap import wrap
 from xtermcolor import colorize
 
 import atexit
@@ -34,7 +35,7 @@ LEVELS = {'life': ('L', 0xff5f87),
           'subspecies': ('S-', 0xffffff)}
 
 COMMANDS = ['quit', 'exit',
-            'ls', 'pwd', 'p']
+            'ls', 'path', 'p']
 
 
 class Level:
@@ -137,22 +138,24 @@ class Level:
     # =================================================================================
 
     def command(self, command, *args):
-        command = command.lower()
+        cmd = command.lower()
 
         # List children
-        if command == 'ls':
+        if cmd == 'ls':
             self._fill_children()
             for c in self._children:
                 print(c.colorized_string())
+            return self
 
         # List path from root
-        if command == 'pwd':
+        if cmd == 'path':
             self._fill_ancestors()
             out = [c.colorized_string() for c in self._ancestors + [self]]
             print(' '.join([out[0]] + ['-> {next}'.format(next=c) for c in out[1:]]))
+            return self
 
         # Go to ancestor
-        if command == 'p':
+        if cmd == 'p':
             try:
                 num = max(int(args[0]), 1)
             except IndexError:
@@ -162,13 +165,26 @@ class Level:
                 current = current.parent()
             return current.refresh()
 
+        # Display info
+        if cmd == '?':
+            try:
+                info = []
+                for p in self.info['info'].split('\n'):
+                    info += wrap('  ' + p)
+                info = '\n'.join(info)
+            except KeyError:
+                info = colorize('No info for {name}'.format(name=self.name()), rgb=0xff0000)
+            print(info)
+            return self
+
         # Go to another level by name
         matches = [c for c in self.children_paths + self.ancestor_paths
-                   if path.basename(c).lower() == command.lower()]
+                   if path.basename(c).lower() == cmd]
         if len(matches) == 1:
             return Level(matches[0])
 
-
+        # Unrecognized command
+        print(colorize("Unrecognized command: '{cmd}'".format(cmd=cmd), rgb=0xff0000))
         return self
 
 
