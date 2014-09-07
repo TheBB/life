@@ -14,7 +14,7 @@ import yaml
 
 LEVELS = {'life': ('L', 0xff5f87),
           'domain': ('D', 0x87ff87),
-          'kingdom': ('K', 0xffffff),
+          'kingdom': ('K', 0xffff87),
           'subkingdom': ('K-', 0xffffff),
           'superphylum': ('P+', 0xffffff),
           'phylum': ('P', 0xffffff),
@@ -105,7 +105,6 @@ class Level:
         if self._ancestors is not None:
             return
         self._ancestors = [Level(c) for c in self.ancestor_paths]
-        self._ancestors.sort(key=methodcaller('name'))
 
 
     # Output
@@ -163,6 +162,7 @@ class Level:
             current = self
             while current.has_parent() and num > 0:
                 current = current.parent()
+                num -= 1
             return current.refresh()
 
         # Display info
