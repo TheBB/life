@@ -38,24 +38,45 @@ COMMANDS = ['quit', 'exit',
             'ls', 'path', 'p']
 
 
-class Level:
+class LightEntry:
 
     def __init__(self, basepath):
-        self._path = basepath
-        self._printed_prompt = False
-        self._children = None
-        self._ancestors = None
+        self.path = basepath
 
         with open(path.join(basepath, '.info.yml')) as f:
             self.info = yaml.load(f)
         self.info['name'] = path.basename(basepath)
+
+    def name(self):
+        return self.info['name']
+
+    def level_short(self):
+        return LEVELS[self.info['level']][0]
+
+    def level_color(self):
+        return LEVELS[self.info['level']][1]
+
+    def colorized_string(self):
+        string = '[{short}] {name}'.format(short=self.level_short(),
+                                           name=self.name())
+        return colorize(string, rgb=self.level_color())
+
+
+class Entry:
+
+    def __init__(self, basepath):
+        self.light = LightEntry(basepath)
+
+        self._printed_prompt = False
+        self._children = None
+        self._ancestors = None
 
         # Fill in paths of children and ancestors
         self.children_paths = [path.join(basepath, c)
                                for c in listdir(basepath)
                                if path.isdir(path.join(basepath, c))]
         self.ancestor_paths = []
-        current  = path.dirname(self._path)
+        current  = path.dirname(basepath)
         while path.exists(path.join(current, '.info.yml')):
             self.ancestor_paths.append(current)
             current = path.dirname(current)
@@ -88,48 +109,36 @@ class Level:
     # =================================================================================
 
     def has_parent(self):
-        return path.exists(path.join(path.dirname(self._path), '.info.yml'))
+        return path.exists(path.join(path.dirname(self.light.path), '.info.yml'))
 
     def parent(self):
         if self.has_parent():
-            return Level(path.dirname(self._path))
+            return Entry(path.dirname(self.light.path))
         raise Exception('Node has no parent')
 
     def _fill_children(self):
         if self._children is not None:
             return
-        self._children = [Level(c) for c in self.children_paths]
+        self._children = [LightEntry(c) for c in self.children_paths]
         self._children.sort(key=methodcaller('name'))
 
     def _fill_ancestors(self):
         if self._ancestors is not None:
             return
-        self._ancestors = [Level(c) for c in self.ancestor_paths]
+        self._ancestors = [LightEntry(c) for c in self.ancestor_paths]
 
 
     # Output
     # =================================================================================
 
-    def name(self):
-        return self.info['name']
-
-    def _level_short(self):
-        return LEVELS[self.info['level']][0]
-
-    def _level_color(self):
-        return LEVELS[self.info['level']][1]
-
     def colorized_string(self):
-        string = '[{short}] {name}'.format(short=self._level_short(),
-                                           name=self.name())
-        return colorize(string, rgb=self._level_color())
+        return self.light.colorized_string()
 
     def print_prompt(self, force=False):
         if self._printed_prompt and not force:
             return
 
-        print(self.colorized_string())
-
+        print(self.light.colorized_string())
         self._printed_prompt = True
 
 
@@ -169,7 +178,7 @@ class Level:
         if cmd == '?':
             try:
                 info = []
-                for p in self.info['info'].split('\n'):
+                for p in self.light.info['info'].split('\n'):
                     info += wrap('  ' + p)
                 info = '\n'.join(info)
             except KeyError:
@@ -181,7 +190,7 @@ class Level:
         matches = [c for c in self.children_paths + self.ancestor_paths
                    if path.basename(c).lower() == cmd]
         if len(matches) == 1:
-            return Level(matches[0])
+            return Entry(matches[0])
 
         # Unrecognized command
         print(colorize("Unrecognized command: '{cmd}'".format(cmd=cmd), rgb=0xff0000))
@@ -201,7 +210,7 @@ if __name__ == '__main__':
     readline.parse_and_bind('tab: complete')
 
     # Start at the root
-    level = Level(path.join(basepath, 'Life'))
+    level = Entry(path.join(basepath, 'Life'))
 
     # Main program loop
     while True:
