@@ -12,20 +12,32 @@ import sys
 import yaml
 
 
-help_string = '''Available commands:
+help_colorize = lambda s: colorize(s, rgb=0xff5f87)
+arg_colorize = lambda s: colorize(s, rgb=0x87ff87)
 
-* help: Show this guide.
-* quit, exit: Exit the program
-* ls: Search for nodes. Available arguments are:
-      -d<num>: search a distance <num> down the tree
-      -d<num1>..<num2>: search a range of distances
-      -l<level>: Search for nodes on a specific level
-      <text>: Part of the name of the node
-      With no arguments, defaults to -d1.
-* goto: Go to node. Takes the same arguments as `ls'.
-* p <num>: Go <num> levels higher. <num> defaults to 1.
-* path: Show current location as a path from root.
-* ?: Show information about the current node.'''
+help_entries = [('help', 'Show this guide.'),
+                ('exit', 'Exit program.'),
+                ('ls', '\n'.join(['Search for nodes. Available arguments are:',
+                                  '  {a}: search a distance {b} down the tree'
+                                  .format(a=arg_colorize('-d<num>'),
+                                          b=arg_colorize('<num>')),
+                                  '  {a}: search a range of distances'
+                                  .format(a=arg_colorize('-d<num1>..<num2>')),
+                                  '  {a}: search for nodes on a specific level'
+                                  .format(a=arg_colorize('-l<level>')),
+                                  '  {a}: part of the name of the node'
+                                  .format(a=arg_colorize('<text>')),
+                                  '  With no arguments, defauls to {a}.'
+                                  .format(a=arg_colorize('-d1'))])),
+                ('goto', "Go to node. Takes the same arguments as `ls'."),
+                ('p {a}'.format(a=arg_colorize('<num>')),
+                 'Go {a} levels higher. {a} defaults to 1.'.format(a=arg_colorize('<num>'))),
+                ('path', 'Show the current location as a path from root.'),
+                ('?', 'Show information about the current node.'),
+                ('<node>', 'Jump directly to an ancestor or direct child by name.')]
+
+help_string = '\n'.join(['{cmd}: {exp}'.format(cmd=help_colorize(cmd), exp=exp)
+                         for cmd, exp in help_entries])
 
 
 LEVELS = {'life':          (0, 'L',  0xff5f87),
@@ -50,7 +62,7 @@ LEVELS = {'life':          (0, 'L',  0xff5f87),
           'species':      (20, 'S',  0xffffff),
           'subspecies':   (21, 'S-', 0xffffff)}
 
-COMMANDS = ['quit', 'exit',
+COMMANDS = ['exit',
             'ls', 'goto', 'path', 'p', '?']
 
 
@@ -364,7 +376,7 @@ if __name__ == '__main__':
             if not command:
                 continue
 
-            if command[0] in ['quit', 'exit']:
+            if command[0] in ['exit']:
                 break
             elif command[0] == 'help':
                 print(help_string)
