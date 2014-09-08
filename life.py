@@ -241,7 +241,7 @@ class Entry:
         # List path from root
         if cmd == 'path':
             out = [c.colorized_string() for c in self._ancestors + [self]]
-            print(' '.join([out[0]] + ['-> {next}'.format(next=c) for c in out[1:]]))
+            print('\n'.join(['   ' + out[0]] + ['-> {next}'.format(next=c) for c in out[1:]]))
             return self
 
         # Find and goto
