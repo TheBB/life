@@ -1,3 +1,4 @@
+from glob import iglob
 from operator import methodcaller
 from os import path, listdir
 from textwrap import wrap
@@ -11,32 +12,62 @@ import sys
 import yaml
 
 
+help_string = '''Available commands:
 
-LEVELS = {'life': ('L', 0xff5f87),
-          'domain': ('D', 0x87ff87),
-          'kingdom': ('K', 0xffff87),
-          'subkingdom': ('K-', 0xffffff),
-          'superphylum': ('P+', 0xffffff),
-          'phylum': ('P', 0xffffff),
-          'subphylum': ('P-', 0xffffff),
-          'superclass': ('C+', 0xffffff),
-          'class': ('C', 0xffffff),
-          'subclass': ('C-', 0xffffff),
-          'superorder': ('O+', 0xffffff),
-          'order': ('O', 0xffffff),
-          'suborder': ('O-', 0xffffff),
-          'superfamily': ('F+', 0xffffff),
-          'family': ('F', 0xffffff),
-          'subfamily': ('F-', 0xffffff),
-          'genus': ('G', 0xffffff),
-          'subgenus': ('G-', 0xffffff),
-          'superspecies': ('S+', 0xffffff),
-          'species': ('S', 0xffffff),
-          'subspecies': ('S-', 0xffffff)}
+* help: Show this guide.
+* quit, exit: Exit the program
+* ls: Search for nodes. Available arguments are:
+      -d<num>: search a distance <num> down the tree
+      -d<num1>..<num2>: search a range of distances
+      -l<level>: Search for nodes on a specific level
+      <text>: Part of the name of the node
+      With no arguments, defaults to -d1.
+* goto: Go to node. Takes the same arguments as `ls'.
+* p <num>: Go <num> levels higher. <num> defaults to 1.
+* path: Show current location as a path from root.
+* ?: Show information about the current node.'''
+
+
+LEVELS = {'life':          (0, 'L',  0xff5f87),
+          'domain':        (1, 'D',  0x87ff87),
+          'kingdom':       (2, 'K',  0xffff87),
+          'subkingdom':    (3, 'K-', 0xffffff),
+          'superphylum':   (4, 'P+', 0xffffff),
+          'phylum':        (5, 'P',  0xffffff),
+          'subphylum':     (6, 'P-', 0xffffff),
+          'superclass':    (7, 'C+', 0xffffff),
+          'class':         (8, 'C',  0xffffff),
+          'subclass':      (9, 'C-', 0xffffff),
+          'superorder':   (10, 'O+', 0xffffff),
+          'order':        (11, 'O',  0xffffff),
+          'suborder':     (13, 'O-', 0xffffff),
+          'superfamily':  (14, 'F+', 0xffffff),
+          'family':       (15, 'F',  0xffffff),
+          'subfamily':    (16, 'F-', 0xffffff),
+          'genus':        (17, 'G',  0xffffff),
+          'subgenus':     (18, 'G-', 0xffffff),
+          'superspecies': (19, 'S+', 0xffffff),
+          'species':      (20, 'S',  0xffffff),
+          'subspecies':   (21, 'S-', 0xffffff)}
 
 COMMANDS = ['quit', 'exit',
-            'ls', 'path', 'p']
+            'ls', 'goto', 'path', 'p', '?']
 
+
+def level_dict():
+    return {level: set() for level in LEVELS}
+
+def distance_dict():
+    return {distance: set() for distance in range(len(LEVELS))}
+
+def parse_level(s):
+    for k, v in LEVELS.items():
+        if k == s.lower() or v[1] == s.upper():
+            return k
+
+
+# Represents one node in the tree (light operations only)
+# =================================================================================
 
 class LightEntry:
 
@@ -50,17 +81,33 @@ class LightEntry:
     def name(self):
         return self.info['name']
 
+    def level(self):
+        return self.info['level']
+
     def level_short(self):
-        return LEVELS[self.info['level']][0]
+        return LEVELS[self.info['level']][1]
 
     def level_color(self):
-        return LEVELS[self.info['level']][1]
+        return LEVELS[self.info['level']][2]
 
     def colorized_string(self):
         string = '[{short}] {name}'.format(short=self.level_short(),
                                            name=self.name())
         return colorize(string, rgb=self.level_color())
 
+    def has_parent(self):
+        return path.exists(path.join(path.dirname(self.path), '.info.yml'))
+
+    def parent(self):
+        return LightEntry(path.dirname(self.path))
+
+    def full(self):
+        return Entry(self.path)
+
+
+
+# Represents one node in the tree
+# =================================================================================
 
 class Entry:
 
@@ -68,22 +115,30 @@ class Entry:
         self.light = LightEntry(basepath)
 
         self._printed_prompt = False
-        self._children = None
         self._ancestors = None
 
-        # Fill in paths of children and ancestors
-        self.children_paths = [path.join(basepath, c)
-                               for c in listdir(basepath)
-                               if path.isdir(path.join(basepath, c))]
-        self.ancestor_paths = []
-        current  = path.dirname(basepath)
-        while path.exists(path.join(current, '.info.yml')):
-            self.ancestor_paths.append(current)
-            current = path.dirname(current)
-        self.ancestor_paths = self.ancestor_paths[::-1]
+        self._path_cache = set()
+        self._children_by_distance = distance_dict()
+        self._children_by_name = {}
+        self._children_by_level = level_dict()
+        self._levels_searched = set()
+        self._distances_searched = set()
+
+        self._fill_distance(1)
+
+        self._ancestors = []
+        try:
+            current = self.light.parent()
+            self._ancestors.append(current)
+            while True:
+                current = current.parent()
+                self._ancestors.append(current)
+        except FileNotFoundError:
+            pass
+        self._ancestors = self._ancestors[::-1]
 
         # Candidates for completion
-        self._candidates = [path.basename(c) for c in self.children_paths + self.ancestor_paths]
+        self._candidates = [e.name() for e in self._children_by_distance[1] | set(self._ancestors)]
         self._candidates.sort()
 
     def refresh(self):
@@ -108,24 +163,43 @@ class Entry:
     # Tree walking
     # =================================================================================
 
-    def has_parent(self):
-        return path.exists(path.join(path.dirname(self.light.path), '.info.yml'))
+    def _add_entry(self, entry, distance):
+        self._children_by_distance[distance].add(entry)
+        self._children_by_level[entry.info['level']].add(entry)
+        self._children_by_name[entry.name()] = entry
+
+    def _get_new_paths(self, distance):
+        return set(filter(path.isdir, iglob(self.light.path + ''.join('/*'*distance)))) - self._path_cache
+
+    def _fill_distance(self, *distances):
+        for d in set(distances) - self._distances_searched:
+            self._distances_searched.add(d)
+            paths = self._get_new_paths(d)
+            for basepath in paths:
+                self._add_entry(LightEntry(basepath), d)
+            self._path_cache.update(paths)
+
+    def _fill_level(self, *levels):
+        levels = set(levels)
+
+        max_dist = 0
+        for l in set(levels) - self._levels_searched:
+            self._levels_searched.add(l)
+            max_dist = max(LEVELS[l][0] - LEVELS[self.light.level()][0], max_dist)
+
+        distances = set(range(1, max_dist+1)) - self._distances_searched
+        for d in distances:
+            paths = self._get_new_paths(d)
+            for basepath in paths:
+                entry = LightEntry(basepath)
+                if entry.level() in levels:
+                    self._add_entry(entry, d)
+                    self._path_cache.add(entry.path)
 
     def parent(self):
-        if self.has_parent():
+        if self.light.has_parent():
             return Entry(path.dirname(self.light.path))
         raise Exception('Node has no parent')
-
-    def _fill_children(self):
-        if self._children is not None:
-            return
-        self._children = [LightEntry(c) for c in self.children_paths]
-        self._children.sort(key=methodcaller('name'))
-
-    def _fill_ancestors(self):
-        if self._ancestors is not None:
-            return
-        self._ancestors = [LightEntry(c) for c in self.ancestor_paths]
 
 
     # Output
@@ -148,18 +222,78 @@ class Entry:
     def command(self, command, *args):
         cmd = command.lower()
 
-        # List children
-        if cmd == 'ls':
-            self._fill_children()
-            for c in self._children:
-                print(c.colorized_string())
-            return self
-
         # List path from root
         if cmd == 'path':
-            self._fill_ancestors()
             out = [c.colorized_string() for c in self._ancestors + [self]]
             print(' '.join([out[0]] + ['-> {next}'.format(next=c) for c in out[1:]]))
+            return self
+
+        # Find and goto
+        if cmd in ['ls', 'goto']:
+            distances = set()
+            levels = set()
+            names = set()
+            for arg in args:
+
+                # Search by distance
+                if arg.startswith('-d'):
+                    try:
+                        distances.add(int(arg[2:]))
+                        continue
+                    except ValueError:
+                        pass
+
+                    try:
+                        init, fin = map(int, arg[2:].split('..'))
+                        distances.update(set(range(init, fin+1)))
+                        continue
+                    except ValueError:
+                        print(colorize("Couldn't parse argument '{arg}'".format(arg=arg), rgb=0xff0000))
+                        return self
+
+                # Search by level
+                if arg.startswith('-l'):
+                    level = parse_level(arg[2:])
+                    if level:
+                        levels.add(level)
+                        continue
+                    else:
+                        print(colorize("No such level '{level}'".format(level=arg[2:]), rgb=0xff0000))
+                        return self
+
+                # Search by name
+                names.add(arg)
+
+            if not (distances or levels):
+                distances = {1}
+
+            self._fill_distance(*distances)
+            self._fill_level(*levels)
+
+            distance_cands = set()
+            level_cands = set()
+            for d in distances:
+                distance_cands |= self._children_by_distance[d]
+            for l in levels:
+                level_cands |= self._children_by_level[l]
+
+            if distances and levels:
+                candidates = distance_cands & level_cands
+            else:
+                candidates = distance_cands or level_cands
+
+            matches = [c for c in candidates if all(re.search(arg, c.name(), re.I) for arg in names)]
+
+            if cmd == 'goto':
+                if len(matches) == 1:
+                    return matches[0].full()
+                else:
+                    print(colorize("No unique entry found:", rgb=0xff0000))
+
+            matches.sort(key=methodcaller('name'))
+            for c in matches:
+                print(c.colorized_string())
+
             return self
 
         # Go to ancestor
@@ -168,11 +302,15 @@ class Entry:
                 num = max(int(args[0]), 1)
             except IndexError:
                 num = 1
-            current = self
+            except:
+                print(colorize("Unable to parse as number: '{arg}'".format(arg=args[0]), rgb=0xff0000))
+                return self
+
+            current = self.light
             while current.has_parent() and num > 0:
                 current = current.parent()
                 num -= 1
-            return current.refresh()
+            return current.full()
 
         # Display info
         if cmd == '?':
@@ -182,20 +320,23 @@ class Entry:
                     info += wrap('  ' + p)
                 info = '\n'.join(info)
             except KeyError:
-                info = colorize('No info for {name}'.format(name=self.name()), rgb=0xff0000)
+                info = colorize('No info for {name}'.format(name=self.light.name()), rgb=0xff0000)
             print(info)
             return self
 
-        # Go to another level by name
-        matches = [c for c in self.children_paths + self.ancestor_paths
-                   if path.basename(c).lower() == cmd]
+        # Go to another entry by name
+        matches = [c for c in self._children_by_distance[1] | set(self._ancestors)
+                   if c.name().lower() == cmd]
         if len(matches) == 1:
-            return Entry(matches[0])
+            return Entry(matches[0].path)
 
         # Unrecognized command
         print(colorize("Unrecognized command: '{cmd}'".format(cmd=cmd), rgb=0xff0000))
         return self
 
+
+# Main program
+# =================================================================================
 
 if __name__ == '__main__':
     basepath = path.dirname(path.realpath(__file__))
@@ -220,13 +361,21 @@ if __name__ == '__main__':
             level.print_prompt()
             command = shlex.split(input('> '))
 
-            if command[0] == 'quit' or command[0] == 'exit':
-                sys.exit(0)
+            if not command:
+                continue
+
+            if command[0] in ['quit', 'exit']:
+                break
+            elif command[0] == 'help':
+                print(help_string)
+                continue
 
             level = level.command(*command)
+
         except EOFError:
             print('')
             break
+
         except KeyboardInterrupt:
             print('')
             continue
