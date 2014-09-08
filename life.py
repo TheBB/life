@@ -42,10 +42,10 @@ help_string = '\n'.join(['{cmd}: {exp}'.format(cmd=help_colorize(cmd), exp=exp)
 
 LEVELS = {'life':          (0, 'L',  0xff5f87),
           'domain':        (1, 'D',  0x87ff87),
-          'kingdom':       (2, 'K',  0xffff87),
-          'subkingdom':    (3, 'K-', 0xffffff),
-          'superphylum':   (4, 'P+', 0xffffff),
-          'phylum':        (5, 'P',  0xffffff),
+          'kingdom':       (2, 'K',  0xffff5f),
+          'subkingdom':    (3, 'K-', 0x5fafff),
+          'superphylum':   (4, 'P+', 0xffff5f),
+          'phylum':        (5, 'P',  0xd75fff),
           'subphylum':     (6, 'P-', 0xffffff),
           'superclass':    (7, 'C+', 0xffffff),
           'class':         (8, 'C',  0xffffff),
@@ -105,6 +105,8 @@ class LightEntry:
     def colorized_string(self):
         string = '[{short}] {name}'.format(short=self.level_short(),
                                            name=self.name())
+        if 'common' in self.info:
+            string += ' ({common})'.format(common=self.info['common'])
         return colorize(string, rgb=self.level_color())
 
     def has_parent(self):
