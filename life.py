@@ -1,3 +1,5 @@
+#!/bin/env python3
+
 from glob import iglob
 from operator import methodcaller
 from os import path, listdir
@@ -48,7 +50,7 @@ LEVELS = {'life':          (0, 'L',  0xff5f87),
           'phylum':        (5, 'P',  0xd75fff),
           'subphylum':     (6, 'P-', 0xffffff),
           'superclass':    (7, 'C+', 0xffffff),
-          'class':         (8, 'C',  0xffffff),
+          'class':         (8, 'C',  0xdadada),
           'subclass':      (9, 'C-', 0xffffff),
           'superorder':   (10, 'O+', 0xffffff),
           'order':        (11, 'O',  0xffffff),
